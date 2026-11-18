@@ -1,0 +1,16 @@
+{   "name": "Mini-WhatsApp", 
+  "short_name": "Mini-WhatsApp",
+     "description": "Messagerie gratuite avec des numéros à 5 chiffres, et un compte pour envoyer de l'argent.",
+        "id": "/",  
+         "start_url": "/", 
+           "scope": "/",  
+            "display": "standalone",  
+             "orientation": "portrait", 
+               "lang": "fr",  
+                "background_color": "#008069",  
+                 "theme_color": "#008069",  
+                  "categories": ["social", "communication"],  
+                   "icons": [    
+                     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },    
+                      { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },    
+                       { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }   ] }
