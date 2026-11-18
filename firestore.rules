@@ -1,0 +1,245 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function connecte() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+    function docEmail() {
+      return /databases/$(database)/documents/emails/$(request.auth.token.email);
+    }
+    function aUnNumero() {
+      return connecte() && exists(docEmail());
+    }
+    function monNumero() {
+      return get(docEmail()).data.numero;
+    }
+    function monProfil() {
+      return get(/databases/$(database)/documents/users/$(monNumero())).data;
+    }
+    function estActif() {
+      return aUnNumero() && monProfil().actif == true;
+    }
+    function estAdmin() {
+      return estActif() && monProfil().role == 'admin';
+    }
+
+    // ---------- Fonctions du module Compte ----------
+    function pTx(id) {
+      return /databases/$(database)/documents/transactions/$(id);
+    }
+    function pCompte(n) {
+      return /databases/$(database)/documents/comptes/$(n);
+    }
+    function pCoffre(n, c) {
+      return /databases/$(database)/documents/comptes/$(n)/coffres/$(c);
+    }
+    function ancienSolde() {
+      return resource == null ? 0 : resource.data.get('solde', 0);
+    }
+    function ancienneTx() {
+      return resource == null ? '' : resource.data.get('derniereTx', '');
+    }
+    function estAgentActif(n) {
+      let u = get(/databases/$(database)/documents/users/$(n)).data;
+      return u.role == 'agent' && u.actif == true;
+    }
+    function utilisateurActif(n) {
+      return get(/databases/$(database)/documents/users/$(n)).data.actif == true;
+    }
+
+    function txValide() {
+      let d = request.resource.data;
+      let moi = monNumero();
+      let p = get(/databases/$(database)/documents/users/$(moi)).data;
+      let admin = p.role == 'admin';
+      return p.actif == true
+        && d.keys().hasOnly(['type', 'expediteur', 'destinataire', 'montant', 'frais', 'date', 'participants', 'coffreId'])
+        && d.keys().hasAll(['type', 'expediteur', 'destinataire', 'montant', 'frais', 'date', 'participants'])
+        && d.expediteur == moi
+        && d.montant is int && d.montant >= 100 && d.montant <= 5000000
+        && d.frais is int
+        && d.date == request.time
+        && d.participants == [d.expediteur, d.destinataire]
+        && (
+          (d.type == 'transfert' && d.destinataire != moi && d.frais == 0
+             && utilisateurActif(d.destinataire))
+          || (d.type == 'retrait' && d.destinataire != moi && estAgentActif(d.destinataire)
+             && d.frais * 100 >= d.montant * 3 && d.frais * 100 < d.montant * 3 + 100)
+          || (d.type == 'depot' && admin && d.frais == 0
+             && exists(/databases/$(database)/documents/users/$(d.destinataire)))
+          || (d.type == 'debit_admin' && admin && d.frais == 0
+             && exists(/databases/$(database)/documents/users/$(d.destinataire)))
+          || (d.type == 'coffre_depot' && d.destinataire == moi && d.frais == 0 && d.coffreId is string)
+          || (d.type == 'coffre_retrait' && d.destinataire == moi && d.frais == 0 && d.coffreId is string)
+        );
+    }
+
+    function coffreCree(n, tx, t) {
+      let p = pCoffre(n, tx.coffreId);
+      let c = getAfter(p).data;
+      return !exists(p)
+        && c.tx == t
+        && c.montant == tx.montant
+        && c.libere == false;
+    }
+    function coffreSorti(n, tx, t) {
+      let p = pCoffre(n, tx.coffreId);
+      let a = get(p).data;
+      let c = getAfter(p).data;
+      return a.libere == false
+        && c.libere == true
+        && c.txLib == t
+        && a.montant == tx.montant
+        && request.time >= a.dispo;
+    }
+
+    function majSolde(numero) {
+      let n = request.resource.data;
+      let t = n.derniereTx;
+      let tx = getAfter(pTx(t)).data;
+      let delta = n.solde - ancienSolde();
+      let moi = monNumero();
+      let p = get(/databases/$(database)/documents/users/$(moi)).data;
+      let admin = p.role == 'admin';
+      return p.actif == true
+        && n.keys().hasOnly(['solde', 'derniereTx'])
+        && n.solde is int && n.solde >= 0
+        && t is string && t != ancienneTx()
+        && !exists(pTx(t))
+        && tx.expediteur == moi
+        && (
+          ((tx.type == 'transfert' || tx.type == 'retrait') && (
+            (numero == tx.expediteur && delta == -(tx.montant + tx.frais))
+            || (numero == tx.destinataire && delta == tx.montant + tx.frais
+                && getAfter(pCompte(tx.expediteur)).data.derniereTx == t)
+          ))
+          || (tx.type == 'depot' && admin && numero == tx.destinataire && delta == tx.montant)
+          || (tx.type == 'debit_admin' && admin && numero == tx.destinataire && delta == -tx.montant)
+          || (tx.type == 'coffre_depot' && numero == moi && delta == -tx.montant && coffreCree(moi, tx, t))
+          || (tx.type == 'coffre_retrait' && numero == moi && delta == tx.montant && coffreSorti(moi, tx, t))
+        );
+    }
+
+    function coffreValide(n, cid) {
+      let d = request.resource.data;
+      let moi = monNumero();
+      let tx = getAfter(pTx(d.tx)).data;
+      return moi == n
+        && get(/databases/$(database)/documents/users/$(moi)).data.actif == true
+        && d.keys().hasOnly(['montant', 'dispo', 'libere', 'creeLe', 'tx'])
+        && d.montant is int && d.montant > 0
+        && d.libere == false
+        && d.dispo is timestamp && d.dispo > request.time
+        && d.creeLe == request.time
+        && tx.type == 'coffre_depot' && tx.coffreId == cid && tx.montant == d.montant
+        && !exists(pTx(d.tx))
+        && getAfter(pCompte(n)).data.derniereTx == d.tx;
+    }
+    function coffreLibere(n, cid) {
+      let d = request.resource.data;
+      let a = resource.data;
+      let moi = monNumero();
+      let tx = getAfter(pTx(d.txLib)).data;
+      return moi == n
+        && get(/databases/$(database)/documents/users/$(moi)).data.actif == true
+        && d.diff(a).affectedKeys().hasOnly(['libere', 'txLib'])
+        && a.libere == false && d.libere == true
+        && request.time >= a.dispo
+        && tx.type == 'coffre_retrait' && tx.coffreId == cid
+        && !exists(pTx(d.txLib))
+        && getAfter(pCompte(n)).data.derniereTx == d.txLib;
+    }
+
+    // ---------- Lien Gmail -> numéro ----------
+    match /emails/{email} {
+      allow get: if (connecte() && request.auth.token.email == email) || estAdmin();
+      allow list: if estAdmin();
+      allow create, delete: if estAdmin();
+      allow update: if false;
+    }
+
+    // ---------- Profils ----------
+    match /users/{numero} {
+      allow get: if estActif() || (aUnNumero() && monNumero() == numero);
+      allow list: if estAdmin();
+
+      allow create: if estAdmin() && numero.matches('^[1-9][0-9]{4}$');
+      allow delete: if estAdmin() && numero != monNumero();
+
+      allow update: if estAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['actif', 'statut', 'nom', 'role']);
+
+      allow update: if estActif() && monNumero() == numero
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['nom', 'photo', 'lastSeen'])
+        && request.resource.data.nom is string
+        && request.resource.data.nom.size() <= 40
+        && request.resource.data.photo is string
+        && request.resource.data.photo.size() <= 60000;
+    }
+
+    // ---------- Messages ----------
+    match /messages/{id} {
+      allow read: if estActif() && monNumero() in resource.data.participants;
+
+      allow create: if estActif()
+        && request.resource.data.keys().hasOnly(
+             ['expediteur', 'destinataire', 'texte', 'date', 'lu', 'participants'])
+        && request.resource.data.expediteur == monNumero()
+        && request.resource.data.destinataire != request.resource.data.expediteur
+        && request.resource.data.participants ==
+             [request.resource.data.expediteur, request.resource.data.destinataire]
+        && request.resource.data.texte is string
+        && request.resource.data.texte.size() > 0
+        && request.resource.data.texte.size() <= 2000
+        && request.resource.data.lu == false
+        && request.resource.data.date == request.time
+        && exists(/databases/$(database)/documents/users/$(request.resource.data.destinataire))
+        && get(/databases/$(database)/documents/users/$(request.resource.data.destinataire)).data.actif == true;
+
+      allow update: if estActif()
+        && resource.data.destinataire == monNumero()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lu'])
+        && request.resource.data.lu == true;
+
+      allow delete: if false;
+    }
+
+    // ---------- Paiements (notes de l'admin) ----------
+    match /paiements/{id} {
+      allow read, write: if estAdmin();
+    }
+
+    // ---------- Statistiques ----------
+    match /stats/{id} {
+      allow read, create: if estAdmin();
+      allow update: if estActif()
+        && request.resource.data.keys().hasOnly(['messages'])
+        && request.resource.data.messages == resource.data.messages + 1;
+    }
+
+    // ---------- Module Compte ----------
+    match /comptes/{numero} {
+      allow get: if estActif() && (monNumero() == numero || estAdmin());
+      allow list: if estAdmin();
+      allow create, update: if majSolde(numero);
+      allow delete: if false;
+    }
+
+    match /comptes/{numero}/coffres/{cid} {
+      allow read: if estActif() && monNumero() == numero;
+      allow create: if coffreValide(numero, cid);
+      allow update: if coffreLibere(numero, cid);
+      allow delete: if false;
+    }
+
+    match /transactions/{id} {
+      allow read: if estActif() && (estAdmin() || monNumero() in resource.data.participants);
+      allow create: if txValide();
+      allow update, delete: if false;
+    }
+  }
+}

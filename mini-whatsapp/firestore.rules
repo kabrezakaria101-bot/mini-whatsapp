@@ -1,0 +1,108 @@
+rules_version = '2';
+
+// Modèle de données
+//   emails/{gmail}     -> { email, numero, createdAt }          (lien Gmail -> numéro, géré par l'admin)
+//   users/{numero}     -> { numero, nom, photo, role, actif, statut, createdAt, lastSeen }
+//   messages/{id}      -> { expediteur, destinataire, texte, date, lu, participants:[exp, dest] }
+//   paiements/{id}     -> { numero, montant, moyen, reference, date }  (admin seulement)
+//   stats/global       -> { messages }                           (compteur lu par l'admin)
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function connecte() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+    function docEmail() {
+      return /databases/$(database)/documents/emails/$(request.auth.token.email);
+    }
+    function aUnNumero() {
+      return connecte() && exists(docEmail());
+    }
+    function monNumero() {
+      return get(docEmail()).data.numero;
+    }
+    function monProfil() {
+      return get(/databases/$(database)/documents/users/$(monNumero())).data;
+    }
+    function estActif() {
+      return aUnNumero() && monProfil().actif == true;
+    }
+    function estAdmin() {
+      return estActif() && monProfil().role == 'admin';
+    }
+
+    // Lien Gmail -> numéro
+    match /emails/{email} {
+      allow get: if (connecte() && request.auth.token.email == email) || estAdmin();
+      allow list: if estAdmin();
+      allow create, delete: if estAdmin();
+      allow update: if false;
+    }
+
+    // Profils
+    match /users/{numero} {
+      // un utilisateur actif peut vérifier qu'un numéro existe et voir son nom/photo
+      allow get: if estActif() || (aUnNumero() && monNumero() == numero);
+      allow list: if estAdmin();
+
+      allow create: if estAdmin() && numero.matches('^[1-9][0-9]{4}$');
+      allow delete: if estAdmin() && numero != monNumero();
+
+      // l'admin : statut, nom, rôle (jamais le numéro ni l'email)
+      allow update: if estAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['actif', 'statut', 'nom', 'role']);
+
+      // l'utilisateur : seulement son nom, sa photo et sa dernière connexion
+      allow update: if estActif() && monNumero() == numero
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['nom', 'photo', 'lastSeen'])
+        && request.resource.data.nom is string
+        && request.resource.data.nom.size() <= 40
+        && request.resource.data.photo is string
+        && request.resource.data.photo.size() <= 60000;
+    }
+
+    // Messages : un utilisateur ne lit que ses propres conversations
+    match /messages/{id} {
+      allow read: if estActif() && monNumero() in resource.data.participants;
+
+      allow create: if estActif()
+        && request.resource.data.keys().hasOnly(
+             ['expediteur', 'destinataire', 'texte', 'date', 'lu', 'participants'])
+        && request.resource.data.expediteur == monNumero()
+        && request.resource.data.destinataire != request.resource.data.expediteur
+        && request.resource.data.participants ==
+             [request.resource.data.expediteur, request.resource.data.destinataire]
+        && request.resource.data.texte is string
+        && request.resource.data.texte.size() > 0
+        && request.resource.data.texte.size() <= 2000
+        && request.resource.data.lu == false
+        && request.resource.data.date == request.time
+        && exists(/databases/$(database)/documents/users/$(request.resource.data.destinataire))
+        && get(/databases/$(database)/documents/users/$(request.resource.data.destinataire)).data.actif == true;
+
+      // seul le destinataire peut marquer "lu"
+      allow update: if estActif()
+        && resource.data.destinataire == monNumero()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lu'])
+        && request.resource.data.lu == true;
+
+      allow delete: if false;
+    }
+
+    // Paiements : admin seulement
+    match /paiements/{id} {
+      allow read, write: if estAdmin();
+    }
+
+    // Compteur global de messages (statistiques admin, sans lire les messages)
+    match /stats/{id} {
+      allow read, create: if estAdmin();
+      allow update: if estActif()
+        && request.resource.data.keys().hasOnly(['messages'])
+        && request.resource.data.messages == resource.data.messages + 1;
+    }
+  }
+}
