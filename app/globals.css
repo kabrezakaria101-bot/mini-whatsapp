@@ -159,3 +159,18 @@ label { display: block; font-size: 14px; color: var(--gris); margin: 12px 0 5px;
   .fil { padding: 12px 10px; }
   .bulle { max-width: 88%; }
 }
+/* ---------- Photos et messages vocaux ---------- */
+.saisie { align-items: center; }
+.photo-msg { display: block; max-width: 100%; max-height: 320px; border-radius: 8px; cursor: pointer; }
+.photo-attente { width: 200px; height: 150px; display: grid; place-items: center; color: var(--gris); font-size: 14px; }
+.photo-plein { background: rgba(0,0,0,.9); z-index: 30; }
+.photo-plein img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.vocal-btn { border: 0; background: rgba(0,0,0,.06); border-radius: 18px; padding: 10px 14px; font: inherit; cursor: pointer; color: var(--texte); }
+.vocal-lecteur { width: 230px; max-width: 100%; height: 40px; }
+.apercu-photo { background: var(--fond); padding: 10px 14px; border-top: 1px solid var(--bord); }
+.apercu-photo img { display: block; max-width: 100%; max-height: 220px; margin: 0 auto 10px; border-radius: 8px; }
+.apercu-photo .ligne { justify-content: flex-end; }
+.enreg { justify-content: space-between; }
+.enreg-temps { display: flex; align-items: center; gap: 8px; font-size: 18px; font-variant-numeric: tabular-nums; }
+.point-rec { width: 12px; height: 12px; border-radius: 50%; background: var(--rouge); animation: clignote 1s infinite; }
+@keyframes clignote { 50% { opacity: .25; } }

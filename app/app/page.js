@@ -9,6 +9,8 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth';
+import { envoyerMedia } from '@/lib/medias';
+import { ContenuMessage, BarreSaisie } from './Medias';
 import { valideNumero, heure, dateCourte, dateLongue, enMs, redimensionnerImage } from '@/lib/utils';
 
 function Avatar({ nom, photo, taille = 46 }) {
@@ -178,6 +180,11 @@ export default function PageMessagerie() {
     // compteur pour les statistiques de l'admin (sans importance si ça échoue)
     updateDoc(doc(db, 'stats', 'global'), { messages: increment(1) }).catch(() => {});
   }
+function envoyerMediaMsg(type, data, duree) {
+    if (!ouvert) return;
+    envoyerMedia(numero, ouvert, type, data, duree).catch((e) => setErreurData(e.message || "L'envoi a échoué."));
+    updateDoc(doc(db, 'stats', 'global'), { messages: increment(1) }).catch(() => {});
+  }
 
   async function activerNotifs() {
     if (typeof Notification === 'undefined') return;
@@ -268,6 +275,7 @@ export default function PageMessagerie() {
             messages={messagesOuverts}
             onRetour={() => setOuvert(null)}
             onEnvoyer={envoyer}
+            onEnvoyerMedia={envoyerMediaMsg}
           />
         ) : (
           <div className="vide">
@@ -288,20 +296,12 @@ export default function PageMessagerie() {
     </div>
   );
 }
-
-function Conversation({ moi, autre, contact, messages, onRetour, onEnvoyer }) {
-  const [texte, setTexte] = useState('');
+function Conversation({ moi, autre, contact, messages, onRetour, onEnvoyer, onEnvoyerMedia }) {
   const bas = useRef(null);
 
   useEffect(() => {
     bas.current?.scrollIntoView({ block: 'end' });
   }, [messages.length]);
-
-  function soumettre(e) {
-    e.preventDefault();
-    onEnvoyer(texte);
-    setTexte('');
-  }
 
   let jourPrecedent = '';
   return (
@@ -325,7 +325,7 @@ function Conversation({ moi, autre, contact, messages, onRetour, onEnvoyer }) {
             <div key={m.id}>
               {sep && <div className="jour"><span>{jour}</span></div>}
               <div className={'bulle ' + (miens ? 'moi' : 'autre')}>
-                <span className="texte">{m.texte}</span>
+                <ContenuMessage m={m} onChargee={() => bas.current?.scrollIntoView({ block: 'end' })} />
                 <span className="meta">
                   {heure(m.date)}
                   {miens && (
@@ -342,20 +342,11 @@ function Conversation({ moi, autre, contact, messages, onRetour, onEnvoyer }) {
         <div ref={bas} />
       </div>
 
-      <form className="saisie" onSubmit={soumettre}>
-        <input
-          className="champ"
-          placeholder="Écrire un message"
-          value={texte}
-          maxLength={2000}
-          autoFocus
-          onChange={(e) => setTexte(e.target.value)}
-        />
-        <button className="btn primaire" disabled={!texte.trim()}>Envoyer</button>
-      </form>
+      <BarreSaisie onTexte={onEnvoyer} onMedia={onEnvoyerMedia} />
     </>
   );
 }
+
 
 function ProfilModal({ profil, onClose, onSaved }) {
   const [nom, setNom] = useState(profil.nom || '');
