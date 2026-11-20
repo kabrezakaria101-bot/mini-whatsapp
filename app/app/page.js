@@ -23,7 +23,8 @@ export default function PageMessagerie() {
   const { profil, setProfil, loading, logout } = useAuth();
   const router = useRouter();
   const numero = profil?.numero;
-  const groupes = useGroupes(profil.numero);
+
+  const groupes = useGroupes(profile?.numero);
 const [creerGroupe, setCreerGroupe] = useState(false);
 const [groupeOuvert, setGroupeOuvert] = useState(null);
 
