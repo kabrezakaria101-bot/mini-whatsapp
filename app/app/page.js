@@ -1,5 +1,5 @@
 'use client';
-
+import { NouveauGroupe, DiscussionGroupe, useGroupes } from '@/lib/groupes';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -23,6 +23,10 @@ export default function PageMessagerie() {
   const { profil, setProfil, loading, logout } = useAuth();
   const router = useRouter();
   const numero = profil?.numero;
+  const groupes = useGroupes(profil.numero);
+const [creerGroupe, setCreerGroupe] = useState(false);
+const [groupeOuvert, setGroupeOuvert] = useState(null);
+
 
   const [messages, setMessages] = useState([]); // tous mes messages (récents d'abord)
   const [ouvert, setOuvert] = useState(null); // numéro de la discussion ouverte
@@ -217,6 +221,12 @@ function envoyerMediaMsg(type, data, duree) {
     : conversations;
 
   if (loading || !profil) return <div className="centre">Chargement…</div>;
+
+  if (creerGroupe) return <NouveauGroupe moi={profil.numero} repertoire={repertoire}
+  onFermer={() => setCreerGroupe(false)}
+  onCree={(g) => { setCreerGroupe(false); setGroupeOuvert(g); }} />;
+if (groupeOuvert) return <DiscussionGroupe moi={profil.numero} groupe={groupeOuvert}
+  repertoire={repertoire} onFermer={() => setGroupeOuvert(null)} />;
 
   return (
     <div className={'layout' + (ouvert ? ' avec-chat' : '')}>
