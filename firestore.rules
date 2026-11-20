@@ -192,6 +192,20 @@ service cloud.firestore {
         && request.resource.data.photo.size() <= 60000;
     }
 
+    // ---------- Répertoire personnel (mes contacts enregistrés) ----------
+    match /users/{numero}/repertoire/{contact} {
+      allow read: if estActif() && monNumero() == numero;
+      allow create, update: if estActif() && monNumero() == numero
+        && contact.matches('^[1-9][0-9]{4}$')
+        && request.resource.data.keys().hasOnly(['numero', 'nom'])
+        && request.resource.data.numero == contact
+        && request.resource.data.nom is string
+        && request.resource.data.nom.size() > 0
+        && request.resource.data.nom.size() <= 40
+        && exists(/databases/$(database)/documents/users/$(contact));
+      allow delete: if estActif() && monNumero() == numero;
+    }
+
     // ---------- Messages ----------
     match /messages/{id} {
       allow read: if estActif() && monNumero() in resource.data.participants;
@@ -217,6 +231,22 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lu'])
         && request.resource.data.lu == true;
 
+      // Supprimer pour moi : j'ajoute mon numéro à la liste "masquePar"
+      allow update: if estActif()
+        && monNumero() in resource.data.participants
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['masquePar'])
+        && request.resource.data.masquePar is list
+        && monNumero() in request.resource.data.masquePar
+        && request.resource.data.masquePar.hasOnly(resource.data.participants);
+
+      // Supprimer pour tous : seulement l'expéditeur, pendant 2 jours
+      allow update: if estActif()
+        && resource.data.expediteur == monNumero()
+        && request.time < resource.data.date + duration.value(2, 'd')
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['supprime', 'texte'])
+        && request.resource.data.supprime == true
+        && request.resource.data.texte == 'Message supprimé';
+
       allow delete: if false;
     }
 
@@ -234,7 +264,8 @@ service cloud.firestore {
         && request.resource.data.type in ['image', 'audio']
         && request.resource.data.data is string
         && request.resource.data.data.size() <= 700000;
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if estActif() && monNumero() == resource.data.expediteur;
     }
 
     // ---------- Paiements (notes de l'admin) ----------
