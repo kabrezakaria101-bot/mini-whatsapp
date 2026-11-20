@@ -11,7 +11,7 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth';
 import { envoyerMedia } from '@/lib/medias';
 import { ContenuMessage, BarreSaisie } from './Medias';
-import { valideNumero, heure, dateCourte, dateLongue, enMs, redimensionnerImage } from '@/lib/utils';
+import { valideNumero, heure, dateCourte, dateLongue, enMs, redimensionnerImage, presence } from '@/lib/utils';
 
 function Avatar({ nom, photo, taille = 46 }) {
   const style = { width: taille, height: taille, fontSize: taille * 0.45 };
@@ -92,10 +92,15 @@ export default function PageMessagerie() {
   // Présence : met à jour "dernière connexion" toutes les minutes
   useEffect(() => {
     if (!numero) return;
-    const ping = () => updateDoc(doc(db, 'users', numero), { lastSeen: serverTimestamp() }).catch(() => {});
+   const ping = () => {
+      if (document.visibilityState !== 'visible') return;
+      updateDoc(doc(db, 'users', numero), { lastSeen: serverTimestamp() }).catch(() => {});
+    };
     ping();
     const t = setInterval(ping, 60000);
-    return () => clearInterval(t);
+    document.addEventListener('visibilitychange', ping);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', ping); };
+
   }, [numero]);
 
   // Liste des discussions
@@ -141,13 +146,13 @@ export default function PageMessagerie() {
     const nonLus = messages.filter(
       (m) => m.expediteur === ouvert && m.destinataire === numero && !m.lu && !m.enAttente && !marquees.current.has(m.id)
     );
-    if (!nonLus.length) return;
-    const batch = writeBatch(db);
-    nonLus.slice(0, 400).forEach((m) => {
+    nonLus.slice(0, 200).forEach((m) => {
       marquees.current.add(m.id);
-      batch.update(doc(db, 'messages', m.id), { lu: true });
+      updateDoc(doc(db, 'messages', m.id), { lu: true }).catch((e) => {
+        console.error('Marquer comme lu a échoué :', e.code || e.message);
+        marquees.current.delete(m.id);
+      });
     });
-    batch.commit().catch(() => nonLus.forEach((m) => marquees.current.delete(m.id)));
   }, [messages, ouvert, numero]);
 
   async function demarrer(e) {
@@ -303,6 +308,20 @@ function Conversation({ moi, autre, contact, messages, onRetour, onEnvoyer, onEn
     bas.current?.scrollIntoView({ block: 'end' });
   }, [messages.length]);
 
+// Présence de l'autre personne : en ligne / dernière connexion
+  const [vu, setVu] = useState(null);
+  const [, setTic] = useState(0);
+  useEffect(() => {
+    const unsub = onSnapshot(
+      doc(db, 'users', autre),
+      (s) => setVu(s.exists() ? s.data({ serverTimestamps: 'estimate' }).lastSeen || null : null),
+      () => {}
+    );
+    const t = setInterval(() => setTic((n) => n + 1), 30000);
+    return () => { unsub(); clearInterval(t); };
+  }, [autre]);
+  const etat = presence(vu);
+
   let jourPrecedent = '';
   return (
     <>
@@ -312,6 +331,8 @@ function Conversation({ moi, autre, contact, messages, onRetour, onEnvoyer, onEn
         <div className="moi">
           <strong>{contact.nom || autre}</strong>
           <small>Numéro {autre}</small>
+          {etat && <small className={etat === 'en ligne' ? 'en-ligne' : ''}>{etat}</small>}
+
         </div>
       </header>
 

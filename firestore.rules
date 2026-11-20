@@ -152,6 +152,17 @@ service cloud.firestore {
         && getAfter(pCompte(n)).data.derniereTx == d.txLib;
     }
 
+    // Photo ou vocal joint à un message
+    function mediaOk() {
+      let d = request.resource.data;
+      return !('type' in d) || (
+        d.type in ['image', 'audio']
+        && d.mediaId is string
+        && existsAfter(/databases/$(database)/documents/medias/$(d.mediaId))
+        && (d.type == 'image' || (d.duree is int && d.duree >= 0 && d.duree <= 120))
+      );
+    }
+
     // ---------- Lien Gmail -> numéro ----------
     match /emails/{email} {
       allow get: if (connecte() && request.auth.token.email == email) || estAdmin();
@@ -187,7 +198,7 @@ service cloud.firestore {
 
       allow create: if estActif()
         && request.resource.data.keys().hasOnly(
-             ['expediteur', 'destinataire', 'texte', 'date', 'lu', 'participants'])
+             ['expediteur', 'destinataire', 'texte', 'date', 'lu', 'participants', 'type', 'mediaId', 'duree'])
         && request.resource.data.expediteur == monNumero()
         && request.resource.data.destinataire != request.resource.data.expediteur
         && request.resource.data.participants ==
@@ -196,6 +207,7 @@ service cloud.firestore {
         && request.resource.data.texte.size() > 0
         && request.resource.data.texte.size() <= 2000
         && request.resource.data.lu == false
+        && mediaOk()
         && request.resource.data.date == request.time
         && exists(/databases/$(database)/documents/users/$(request.resource.data.destinataire))
         && get(/databases/$(database)/documents/users/$(request.resource.data.destinataire)).data.actif == true;
@@ -206,6 +218,23 @@ service cloud.firestore {
         && request.resource.data.lu == true;
 
       allow delete: if false;
+    }
+
+    // ---------- Photos et vocaux (le contenu, lu seulement par les 2 participants) ----------
+    match /medias/{id} {
+      allow get: if estActif() && monNumero() in resource.data.participants;
+      allow list: if false;
+      allow create: if estActif()
+        && request.resource.data.keys().hasOnly(['expediteur', 'destinataire', 'participants', 'type', 'data'])
+        && request.resource.data.keys().hasAll(['expediteur', 'destinataire', 'participants', 'type', 'data'])
+        && request.resource.data.expediteur == monNumero()
+        && request.resource.data.destinataire != request.resource.data.expediteur
+        && request.resource.data.participants ==
+             [request.resource.data.expediteur, request.resource.data.destinataire]
+        && request.resource.data.type in ['image', 'audio']
+        && request.resource.data.data is string
+        && request.resource.data.data.size() <= 700000;
+      allow update, delete: if false;
     }
 
     // ---------- Paiements (notes de l'admin) ----------

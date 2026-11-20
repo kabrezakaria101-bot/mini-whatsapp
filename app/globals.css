@@ -174,3 +174,4 @@ label { display: block; font-size: 14px; color: var(--gris); margin: 12px 0 5px;
 .enreg-temps { display: flex; align-items: center; gap: 8px; font-size: 18px; font-variant-numeric: tabular-nums; }
 .point-rec { width: 12px; height: 12px; border-radius: 50%; background: var(--rouge); animation: clignote 1s infinite; }
 @keyframes clignote { 50% { opacity: .25; } }
+.moi small.en-ligne { color: var(--vert); font-weight: 600; }
