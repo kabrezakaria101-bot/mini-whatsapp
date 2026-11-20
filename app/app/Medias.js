@@ -5,6 +5,7 @@ import { chargerMedia, redimensionnerPhoto, blobEnTexte, fmtDuree, DUREE_MAX_VOC
 
 // Contenu d'une bulle : texte, photo ou vocal
 export function ContenuMessage({ m, onChargee }) {
+  if (m.supprime) return <span className="texte supprime">🚫 Message supprimé</span>;
   if (m.type === 'image' && m.mediaId) return <PhotoMessage id={m.mediaId} onChargee={onChargee} />;
   if (m.type === 'audio' && m.mediaId) return <VocalMessage id={m.mediaId} duree={m.duree || 0} />;
   return <span className="texte">{m.texte}</span>;
@@ -186,3 +187,4 @@ export function BarreSaisie({ onTexte, onMedia }) {
     </>
   );
 }
+

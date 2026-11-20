@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   collection, query, where, orderBy, limit, onSnapshot, addDoc, writeBatch,
-  doc, getDoc, updateDoc, serverTimestamp, increment,
+  doc, getDoc, updateDoc, deleteDoc, arrayUnion, serverTimestamp, increment,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth';
@@ -68,11 +68,13 @@ export default function PageMessagerie() {
       (snap) => {
         setErreurData('');
         setMessages(
-          snap.docs.map((d) => ({
+          snap.docs
+          .map((d) => ({
             id: d.id,
             enAttente: d.metadata.hasPendingWrites,
             ...d.data({ serverTimestamps: 'estimate' }),
           }))
+          .filter((m) => !(m.masquePar || []).includes(numero))
         );
         if (!premier) {
           snap.docChanges().forEach((ch) => {
@@ -192,6 +194,19 @@ function envoyerMediaMsg(type, data, duree) {
     updateDoc(doc(db, 'stats', 'global'), { messages: increment(1) }).catch(() => {});
   }
 
+  // Supprimer un message seulement pour moi
+  function supprimerPourMoi(m) {
+    updateDoc(doc(db, 'messages', m.id), { masquePar: arrayUnion(numero) })
+      .catch(() => setErreurData('Suppression impossible. Réessayez.'));
+  }
+
+  // Supprimer un message pour tout le monde (le texte est remplacé, la photo/le vocal est effacé)
+  function supprimerPourTous(m) {
+    updateDoc(doc(db, 'messages', m.id), { supprime: true, texte: 'Message supprimé' })
+      .then(() => { if (m.mediaId) deleteDoc(doc(db, 'medias', m.mediaId)).catch(() => {}); })
+      .catch(() => setErreurData('Suppression pour tous impossible (message trop ancien ?).'));
+  }
+
   async function activerNotifs() {
     if (typeof Notification === 'undefined') return;
     setPermNotif(await Notification.requestPermission());
@@ -282,6 +297,9 @@ function envoyerMediaMsg(type, data, duree) {
             onRetour={() => setOuvert(null)}
             onEnvoyer={envoyer}
             onEnvoyerMedia={envoyerMediaMsg}
+            onSupprimerMoi={supprimerPourMoi}
+            onSupprimerTous={supprimerPourTous}
+
           />
         ) : (
           <div className="vide">
@@ -302,16 +320,17 @@ function envoyerMediaMsg(type, data, duree) {
     </div>
   );
 }
-function Conversation({ moi, autre, contact, messages, onRetour, onEnvoyer, onEnvoyerMedia }) {
+function Conversation({ moi, autre, contact, messages, onRetour, onEnvoyer, onEnvoyerMedia, onSupprimerMoi, onSupprimerTous }) {
   const bas = useRef(null);
+  const [menu, setMenu] = useState(null); // message dont on affiche le menu de suppression
+  const [vu, setVu] = useState(null);
+  const [, setTic] = useState(0);
 
   useEffect(() => {
     bas.current?.scrollIntoView({ block: 'end' });
   }, [messages.length]);
 
-// Présence de l'autre personne : en ligne / dernière connexion
-  const [vu, setVu] = useState(null);
-  const [, setTic] = useState(0);
+  // Présence de l'autre personne : en ligne / dernière connexion
   useEffect(() => {
     const unsub = onSnapshot(
       doc(db, 'users', autre),
@@ -333,7 +352,6 @@ function Conversation({ moi, autre, contact, messages, onRetour, onEnvoyer, onEn
           <strong>{contact.nom || autre}</strong>
           <small>Numéro {autre}</small>
           {etat && <small className={etat === 'en ligne' ? 'en-ligne' : ''}>{etat}</small>}
-
         </div>
       </header>
 
@@ -349,6 +367,9 @@ function Conversation({ moi, autre, contact, messages, onRetour, onEnvoyer, onEn
               <div className={'bulle ' + (miens ? 'moi' : 'autre')}>
                 <ContenuMessage m={m} onChargee={() => bas.current?.scrollIntoView({ block: 'end' })} />
                 <span className="meta">
+                  {!m.enAttente && (
+                    <button type="button" className="plus" title="Supprimer" onClick={() => setMenu(m)}>⋮</button>
+                  )}
                   {heure(m.date)}
                   {miens && (
                     <span className={'coches' + (m.lu ? ' lu' : '')}>
@@ -365,10 +386,28 @@ function Conversation({ moi, autre, contact, messages, onRetour, onEnvoyer, onEn
       </div>
 
       <BarreSaisie onTexte={onEnvoyer} onMedia={onEnvoyerMedia} />
+
+      {menu && (
+        <div className="fond" onClick={() => setMenu(null)}>
+          <div className="carte modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Supprimer le message ?</h2>
+            <div className="choix-suppr">
+              <button className="btn" onClick={() => { onSupprimerMoi(menu); setMenu(null); }}>
+                Supprimer pour moi
+              </button>
+              {menu.expediteur === moi && !menu.supprime && Date.now() - enMs(menu.date) < 2 * 86400000 && (
+                <button className="btn danger" onClick={() => { onSupprimerTous(menu); setMenu(null); }}>
+                  Supprimer pour tous
+                </button>
+              )}
+              <button className="btn" onClick={() => setMenu(null)}>Annuler</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
-
 
 function ProfilModal({ profil, onClose, onSaved }) {
   const [nom, setNom] = useState(profil.nom || '');
