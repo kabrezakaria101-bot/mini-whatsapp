@@ -150,6 +150,7 @@ export default function PageMessagerie() {
       marquees.current.add(m.id);
       updateDoc(doc(db, 'messages', m.id), { lu: true }).catch((e) => {
         console.error('Marquer comme lu a échoué :', e.code || e.message);
+        setErreurData('Lu impossible(${e.code || e.message})');
         marquees.current.delete(m.id);
       });
     });
