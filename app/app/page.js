@@ -12,7 +12,7 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth';
 import { envoyerMedia } from '@/lib/medias';
 import { ContenuMessage, BarreSaisie } from './Medias';
-import { Repertoire,useRepertoire } from './Repertoire';
+import { Repertoire, useRepertoire } from '@/lib/Repertoire';
 import { valideNumero, heure, dateCourte, dateLongue, enMs, redimensionnerImage, presence } from '@/lib/utils';
 
 function Avatar({ nom, photo, taille = 46 }) {
