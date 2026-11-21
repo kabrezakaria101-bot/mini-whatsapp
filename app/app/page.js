@@ -12,6 +12,7 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/lib/auth';
 import { envoyerMedia } from '@/lib/medias';
 import { ContenuMessage, BarreSaisie } from './Medias';
+import { Repertoire,useRepertoire } from './Repertoire';
 import { valideNumero, heure, dateCourte, dateLongue, enMs, redimensionnerImage, presence } from '@/lib/utils';
 
 function Avatar({ nom, photo, taille = 46 }) {
@@ -25,9 +26,11 @@ export default function PageMessagerie() {
   const router = useRouter();
   const numero = profil?.numero;
 
-  const groupes = useGroupes(profile?.numero);
+  const groupes = useGroupes(numero);
 const [creerGroupe, setCreerGroupe] = useState(false);
 const [groupeOuvert, setGroupeOuvert] = useState(null);
+const repertoire = useRepertoire(numero);
+  const [repOuvert, setRepOuvert] = useState(false);
 
 
   const [messages, setMessages] = useState([]); // tous mes messages (récents d'abord)
@@ -158,7 +161,7 @@ const [groupeOuvert, setGroupeOuvert] = useState(null);
       marquees.current.add(m.id);
       updateDoc(doc(db, 'messages', m.id), { lu: true }).catch((e) => {
         console.error('Marquer comme lu a échoué :', e.code || e.message);
-        setErreurData('Lu impossible(${e.code || e.message})');
+        setErreurData(`Lu impossible(${e.code || e.message})`);
         marquees.current.delete(m.id);
       });
     });
@@ -177,6 +180,21 @@ const [groupeOuvert, setGroupeOuvert] = useState(null);
       setSaisie('');
     } catch {
       setErreurNouveau('Vérification impossible. Réessayez.');
+    }
+  }
+// Ouvre une discussion avec un numéro (après vérification). Renvoie un message d'erreur, ou '' si tout va bien.
+  async function ouvrirNumero(n) {
+    if (!valideNumero(n)) return 'Entrez un numéro à 5 chiffres.';
+    if (n === numero) return "C'est votre propre numéro.";
+    try {
+      const s = await getDoc(doc(db, 'users', n));
+      if (!s.exists() || !s.data().actif) return "Ce numéro n'existe pas ou n'est pas actif.";
+      setContacts((c) => ({ ...c, [n]: { nom: s.data().nom, photo: s.data().photo } }));
+      setOuvert(n);
+      setRepOuvert(false);
+      return '';
+    } catch {
+      return 'Vérification impossible. Réessayez.';
     }
   }
 
@@ -296,6 +314,23 @@ if (groupeOuvert) return <DiscussionGroupe moi={profil.numero} groupe={groupeOuv
             </li>
           )}
         </ul>
+        <button className="fab" onClick={() => setRepOuvert(true)} title="Nouveau message" aria-label="Nouveau message">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-3 9h-4v4h-2v-4H7V9h4V5h2v4h4v2z" />
+          </svg>
+        </button>
+
+        {repOuvert && (
+          <Repertoire
+            moi={numero}
+            repertoire={repertoire}
+            onChoisir={(n) => { setOuvert(n); setRepOuvert(false); }}
+            onOuvrirNumero={ouvrirNumero}
+            onFermer={() => setRepOuvert(false)}
+            onNouveauGroupe={() => { setRepOuvert(false); setCreerGroupe(true); }}
+          />
+        )}
+
       </aside>
 
       <main className="conv">

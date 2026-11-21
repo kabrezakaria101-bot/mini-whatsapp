@@ -179,3 +179,20 @@ label { display: block; font-size: 14px; color: var(--gris); margin: 12px 0 5px;
 .bulle .plus { background: none; border: 0; color: var(--gris); font-size: 16px; line-height: 1; padding: 0 6px 0 0; cursor: pointer; vertical-align: middle; }
 .texte.supprime { font-style: italic; color: var(--gris); }
 .choix-suppr { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+/* ---------- Répertoire et bouton "Nouveau message" ---------- */
+.sidebar { position: relative; }
+.fab {
+  position: absolute; right: 18px; bottom: 22px; width: 60px; height: 60px; border: 0; border-radius: 18px;
+  background: #1b6b46; color: #fff; display: grid; place-items: center; box-shadow: 0 4px 12px rgba(0,0,0,.3); cursor: pointer; z-index: 4;
+}
+.fab:hover { background: #145a3a; }
+.rep { position: absolute; inset: 0; background: #fff; display: flex; flex-direction: column; z-index: 6; }
+.rep-recherche { padding: 10px 14px; border-bottom: 1px solid var(--bord); }
+.succes.marge { margin: 8px 14px; }
+.rep-ico { background: var(--vert); }
+.rep-form { display: flex; flex-direction: column; gap: 8px; padding: 10px 14px 14px; background: var(--fond); }
+.rep-titre { padding: 14px 14px 6px; color: var(--vert); font-weight: 600; font-size: 14px; }
+.rep-ligne { cursor: default; }
+.rep-main { flex: 1; min-width: 0; display: flex; gap: 12px; align-items: center; background: none; border: 0; text-align: left; padding: 0; cursor: pointer; }
+.rep-ligne .icone { font-size: 18px; }
+.rep .item-texte { display: flex; flex-direction: column; min-width: 0; }
