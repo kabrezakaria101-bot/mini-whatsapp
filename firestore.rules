@@ -301,5 +301,36 @@ service cloud.firestore {
       allow create: if txValide();
       allow update, delete: if false;
     }
+    // ---------- Groupes ----------
+    match /groupes/{gid} {
+      allow read: if estActif() && monNumero() in resource.data.membres;
+      allow create: if estActif()
+        && request.resource.data.keys().hasOnly(['nom', 'admin', 'membres', 'creeLe'])
+        && request.resource.data.admin == monNumero()
+        && request.resource.data.nom is string
+        && request.resource.data.nom.size() > 0
+        && request.resource.data.nom.size() <= 40
+        && request.resource.data.membres is list
+        && request.resource.data.membres.size() >= 2
+        && request.resource.data.membres.size() <= 50
+        && request.resource.data.membres[0] == monNumero()
+        && request.resource.data.creeLe == request.time;
+      allow update, delete: if false;
+    }
+
+    match /groupes/{gid}/messages/{mid} {
+      allow read: if estActif()
+        && monNumero() in get(/databases/$(database)/documents/groupes/$(gid)).data.membres;
+      allow create: if estActif()
+        && monNumero() in get(/databases/$(database)/documents/groupes/$(gid)).data.membres
+        && request.resource.data.keys().hasOnly(['de', 'texte', 'date'])
+        && request.resource.data.de == monNumero()
+        && request.resource.data.texte is string
+        && request.resource.data.texte.size() > 0
+        && request.resource.data.texte.size() <= 2000
+        && request.resource.data.date == request.time;
+      allow update, delete: if false;
+    }
+
   }
 }
